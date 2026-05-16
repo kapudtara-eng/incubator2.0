@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Incubator Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+    body {
+      background: linear-gradient(145deg, #1e2b2e 0%, #152025 100%);
+      min-height: 100vh; display: flex; justify-content: center; align-items: center;
+      padding: 15px;
+    }
+    .dashboard {
+      max-width: 800px; width: 100%;
+      background: rgba(255,255,255,0.08); backdrop-filter: blur(20px);
+      border-radius: 3rem; padding: 1.8rem;
+      box-shadow: 0 30px 50px rgba(0,0,0,0.5);
+      border: 1px solid rgba(255,255,255,0.15); color: #eef5f3;
+    }
+    h1 { text-align: center; font-weight: 500; letter-spacing: 2px; font-size: 2rem; margin-bottom: 1.8rem; color: #d4e9e2; }
+    .readings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+    .card {
+      background: rgba(20,30,30,0.6); backdrop-filter: blur(12px);
+      border-radius: 2.5rem; padding: 1.2rem; text-align: center;
+      box-shadow: 0 15px 25px rgba(0,0,0,0.4); border: 1px solid rgba(220,240,230,0.2);
+    }
+    .label { font-size: 1rem; text-transform: uppercase; letter-spacing: 2px; color: #9bb8b0; margin-bottom: 0.4rem; }
+    .value { font-size: 3.5rem; font-weight: 700; color: #f0ffe6; text-shadow: 0 0 15px #6abf9a; }
+    .unit { font-size: 1.2rem; color: #b5cfc4; }
+    .status { margin-top: 0.8rem; font-size: 0.9rem; background: #1e3330; padding: 0.3rem 0.9rem; border-radius: 30px; }
+    .graph-section {
+      background: rgba(12,22,22,0.7); backdrop-filter: blur(16px);
+      border-radius: 2.2rem; padding: 1.2rem; margin-top: 1.2rem;
+      border: 1px solid #3e5a52;
+    }
+    .controls { display: flex; gap: 1rem; flex-wrap: wrap; margin: 1.5rem 0; }
+    button {
+      background: #4f7166; border: none; color: white; font-weight: bold;
+      padding: 0.8rem 1.5rem; border-radius: 2.5rem; cursor: pointer;
+      font-size: 0.95rem; border: 1px solid #81b7a0;
+    }
+    .info { text-align: center; color: #8aa89d; font-size: 0.8rem; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <div class="dashboard">
+    <h1>🥚 INCUBATOR MONITOR</h1>
+    
+    <div class="readings-grid">
+      <div class="card">
+        <div class="label">🌡️ Temperature</div>
+        <div class="value"><span id="tempValue">--</span><span class="unit">°C</span></div>
+        <div class="status" id="tempStatus">Loading...</div>
+      </div>
+      <div class="card">
+        <div class="label">💧 Humidity</div>
+        <div class="value"><span id="humValue">--</span><span class="unit">%</span></div>
+        <div class="status" id="humStatus">Loading...</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button onclick="refreshData()">🔄 Refresh Now</button>
+      <span style="color:#b5cfc4; align-self:center;" id="lastUpdate">--</span>
+    </div>
+
+    <div class="graph-section">
+      <canvas id="historyChart" height="200"></canvas>
+    </div>
+    <div class="info">
+      🔗 Data updates every 10 seconds • Motor cycles: <span id="cycleCount">0</span>
+    </div>
+  </div>
+
+  <script>
+    // ===== CONFIGURATION =====
+    // Replace with your actual Blynk data URL (see instructions below)
+    const DATA_URL = 'https://blynk.cloud/external/api/get?token=x53GLxZ1WLZzPIK1-lBAAGRlzqlnvOOp&V0&V1&V5';
+    
+    let tempHistory = [];
+    let humHistory = [];
+    let timeLabels = [];
+    const MAX_POINTS = 20;
+    
+    let chart = new Chart(document.getElementById('historyChart'), {
+      type: 'line',
+      data: {
+        labels: timeLabels,
+        datasets: [
+          {
+            label: 'Temperature °C',
+            data: tempHistory,
+            borderColor: '#f9b17a',
+            backgroundColor: 'rgba(249,177,122,0.1)',
+            borderWidth: 2,
+            tension: 0.3,
+            yAxisID: 'y'
+          },
+          {
+            label: 'Humidity %',
+            data: humHistory,
+            borderColor: '#7ec8e3',
+            backgroundColor: 'rgba(126,200,227,0.1)',
+            borderWidth: 2,
+            tension: 0.3,
+            yAxisID: 'y1'
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        scales: {
+          y: {
+            type: 'linear',
+            position: 'left',
+            min: 30, max: 42,
+            grid: { color: '#2d4540' },
+            ticks: { color: '#f9b17a' }
+          },
+          y1: {
+            type: 'linear',
+            position: 'right',
+            min: 20, max: 90,
+            grid: { drawOnChartArea: false },
+            ticks: { color: '#7ec8e3' }
+          },
+          x: {
+            grid: { color: '#2e433e' },
+            ticks: { color: '#95b5a9', maxTicksLimit: 8 }
+          }
+        },
+        plugins: { legend: { labels: { color: '#bcd9cf' } } }
+      }
+    });
+
+    async function refreshData() {
+      try {
+        const response = await fetch(DATA_URL);
+        const data = await response.json();
+        
+        // Blynk returns values in format: {"V0":37.5,"V1":55.2,"V5":3}
+        const temp = parseFloat(data.V0);
+        const hum = parseFloat(data.V1);
+        const counter = parseInt(data.V5);
+        
+        if (!isNaN(temp) && !isNaN(hum)) {
+          document.getElementById('tempValue').textContent = temp.toFixed(1);
+          document.getElementById('humValue').textContent = hum.toFixed(1);
+          document.getElementById('cycleCount').textContent = counter || 0;
+          
+          // Update status
+          if (temp < 37.5) document.getElementById('tempStatus').textContent = '🔥 Heating ON';
+          else if (temp > 37.8) document.getElementById('tempStatus').textContent = '❄️ Heating OFF';
+          else document.getElementById('tempStatus').textContent = '✅ Temperature OK';
+          
+          if (hum < 40) document.getElementById('humStatus').textContent = '💧 Humidifier ON';
+          else if (hum > 60) document.getElementById('humStatus').textContent = '🌬️ Humidifier OFF';
+          else document.getElementById('humStatus').textContent = '✅ Humidity OK';
+          
+          // Update graph
+          const now = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+          timeLabels.push(now);
+          tempHistory.push(temp);
+          humHistory.push(hum);
+          
+          if (timeLabels.length > MAX_POINTS) {
+            timeLabels.shift();
+            tempHistory.shift();
+            humHistory.shift();
+          }
+          
+          chart.update();
+          document.getElementById('lastUpdate').textContent = 'Updated: ' + now;
+        }
+      } catch (error) {
+        console.log('Fetch error:', error);
+        document.getElementById('lastUpdate').textContent = 'Connection error - retrying...';
+      }
+    }
+
+    // Initial load
+    refreshData();
+    // Auto-refresh every 10 seconds
+    setInterval(refreshData, 10000);
+  </script>
+</body>
+</html>
